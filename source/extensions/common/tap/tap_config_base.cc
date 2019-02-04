@@ -14,7 +14,10 @@ namespace Common {
 namespace Tap {
 
 void Utility::addBufferToProtoBytes(envoy::data::tap::v2alpha::Body& output_bytes,
-                                    uint32_t max_buffered_bytes, const Buffer::Instance& data) {
+                                    uint32_t max_buffered_bytes, const Buffer::Instance& data,
+                                    uint32_t buffer_start_offset, uint32_t buffer_length_to_copy) {
+  ASSERT(buffer_start_offset + buffer_length_to_copy <= data.length());
+
   const uint64_t num_slices = data.getRawSlices(nullptr, 0);
   STACK_ARRAY(slices, Buffer::RawSlice, num_slices);
   data.getRawSlices(slices.begin(), num_slices);
