@@ -128,6 +128,7 @@ int BufferHelper::peekString(Buffer::Instance& buffer, uint64_t& offset, std::st
   return MYSQL_SUCCESS;
 }
 
+
 int BufferHelper::peekStringBySize(Buffer::Instance& buffer, uint64_t& offset, int len,
                                    std::string& str) {
   if (buffer.length() < (offset + len)) {

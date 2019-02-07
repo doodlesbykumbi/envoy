@@ -105,6 +105,7 @@ private:
   MySQLFilterConfigSharedPtr config_;
   std::unique_ptr<Decoder> decoder_;
   bool sniffing_{true};
+  ClientLogin client_login_{};
 };
 
 }  // namespace MySQLProxy

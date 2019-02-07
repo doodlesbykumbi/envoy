@@ -119,6 +119,15 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint64_t& offset, int) {
     }
     setDb(db);
   }
+
+  auto duplicate_buff = new Buffer::OwnedImpl();
+  auto packet_tail_buff = new Buffer::OwnedImpl();
+
+  duplicate_buff->add(buffer);
+  duplicate_buff->drain(offset);
+  packet_tail_buff->add(*duplicate_buff);
+  packet_tail = packet_tail_buff;
+
   return MYSQL_SUCCESS;
 }
 
@@ -146,6 +155,7 @@ std::string ClientLogin::encode() {
     BufferHelper::addString(*buffer, db_);
     BufferHelper::addUint8(*buffer, enc_end_string);
   }
+  buffer->add(*packet_tail);
 
   return buffer->toString();
 }

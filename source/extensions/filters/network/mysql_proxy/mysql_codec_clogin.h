@@ -35,6 +35,7 @@ public:
   void setUsername(std::string& username);
   void setAuthResp(std::string& auth_resp);
   void setDb(std::string& db);
+  Buffer::Instance* packet_tail;
 
 private:
   int client_cap_;

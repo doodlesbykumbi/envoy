@@ -1,4 +1,5 @@
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
+#include "extensions/filters/network/mysql_proxy/mysql_utils.h"
 
 #include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
@@ -23,12 +24,23 @@ void MySQLFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks& ca
 }
 
 Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
+  auto requestingAuth = getSession().getState() == MySQLSession::State::MYSQL_CHALLENGE_REQ;
   doDecode(data);
+
+  if (requestingAuth) {
+    std::string user("force-to-user-this-user");
+    client_login_.setUsername(user);
+    data.drain(data.length());
+    std::string mysql_msg = MySQLProxy::BufferHelper::encodeHdr(client_login_.encode(), 1);
+    data.add(mysql_msg);
+  }
+
   return Network::FilterStatus::Continue;
 }
 
 Network::FilterStatus MySQLFilter::onWrite(Buffer::Instance& data, bool) {
   doDecode(data);
+
   return Network::FilterStatus::Continue;
 }
 
@@ -36,7 +48,8 @@ void MySQLFilter::doDecode(Buffer::Instance& buffer) {
   // Safety measure just to make sure that if we have a decoding error we keep going and lose stats.
   // This can be removed once we are more confident of this code.
   if (!sniffing_) {
-    buffer.drain(buffer.length());
+//    buffer.drain(buffer.length());
+    ENVOY_LOG(info, "not sniffing anymore");
     return;
   }
 
@@ -76,6 +89,8 @@ void MySQLFilter::onClientLogin(ClientLogin& client_login) {
   if (client_login.isSSLRequest()) {
     config_->stats_.upgraded_to_ssl_.inc();
   }
+
+  client_login_ = client_login;
 }
 
 void MySQLFilter::onClientLoginResponse(ClientLoginResponse& client_login_resp) {
