@@ -1,6 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
-#include "extensions/filters/network/mysql_proxy/mysql_go.h"
+#include "extensions/filters/network/mysql_proxy/secretless.h"
 
 #include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
@@ -35,17 +35,18 @@ Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
   ENVOY_LOG(info, "onData");
 
   if (requestingAuth && !client_login_.isSSLRequest()) {
-    if (client_login_.isSSLRequest()) {
-      ENVOY_LOG(info, "this is an SSL request");
-    }
     ENVOY_LOG(info, "requestingAuth");
-    std::string user("kumbi");
-    std::string password("password");
+    auto provider = std::getenv("SECRET_PROVIDER");
+    StoredSecret userRef = { .ID=to_c_string("db-username"), .Provider=to_c_string(provider), .Name=to_c_string("db-password") };
+    StoredSecret passwordRef = { .ID=to_c_string("db-password"), .Provider=to_c_string(provider), .Name=to_c_string("db-password") };
+
     std::string salt = server_greeting_.getSalt();
 
-    client_login_.setUsername(user);
 
-    std::string authResp = NativePassword(to_c_string(password), to_c_string(salt));
+    std::string authResp = NativePassword(passwordRef, to_c_string(salt));
+    std::string user = GetSecret(userRef);
+
+    client_login_.setUsername(user);
     client_login_.setAuthResp(authResp);
 
     std::string authPluginName("mysql_native_password");
@@ -53,9 +54,11 @@ Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
 
     std::string client_login_data = client_login_.encode();
     std::string mysql_msg = MySQLProxy::BufferHelper::encodeHdr(client_login_data, 1);
-    ENVOY_LOG(info, "AOK");
+
     data.drain(data.length());
     data.add(mysql_msg);
+
+      ENVOY_LOG(info, "Authenticated using Secret Provider");
   }
 
   return Network::FilterStatus::Continue;

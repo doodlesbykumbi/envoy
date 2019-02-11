@@ -11,12 +11,12 @@ load(
 
 envoy_package()
 
-genrule(
-    name = "mysql_go",
-    srcs = [ "mysql_go.go" ],
-    outs = ["mysql_go.a", "mysql_go.h"],
-    cmd = "go build -o $(location mysql_go.a) -buildmode=c-archive ./$(location mysql_go.go)",
-)
+#genrule(
+#    name = "mysql_go",
+#    srcs = [ "mysql_go.go" ],
+#    outs = ["mysql_go.a", "mysql_go.h"],
+#    cmd = "go build -o $(location mysql_go.a) -buildmode=c-archive ./$(location mysql_go.go)",
+#)
 
 envoy_cc_library(
     name = "proxy_lib",
@@ -29,7 +29,8 @@ envoy_cc_library(
         "mysql_decoder.cc",
         "mysql_filter.cc",
         "mysql_utils.cc",
-        "mysql_go",
+#        "mysql_go",
+        "secretless.a",
     ],
     hdrs = [
         "mysql_codec.h",
@@ -42,7 +43,8 @@ envoy_cc_library(
         "mysql_filter.h",
         "mysql_session.h",
         "mysql_utils.h",
-        "mysql_go.h",
+#        "mysql_go.h",
+        "secretless.h",
     ],
     external_deps = ["sqlparser"],
     deps = [
