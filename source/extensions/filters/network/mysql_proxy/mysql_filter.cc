@@ -1,5 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
 #include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "extensions/filters/network/mysql_proxy/mysql_go.h"
 
 #include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
@@ -14,6 +15,10 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
+char* to_c_string(std::string str) {
+  return &str[0u];;
+}
+
 MySQLFilterConfig::MySQLFilterConfig(const std::string& stat_prefix, Stats::Scope& scope)
     : scope_(scope), stat_prefix_(stat_prefix), stats_(generateStats(stat_prefix, scope)) {}
 
@@ -27,11 +32,29 @@ Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
   auto requestingAuth = getSession().getState() == MySQLSession::State::MYSQL_CHALLENGE_REQ;
   doDecode(data);
 
-  if (requestingAuth) {
-    std::string user("force-to-user-this-user");
+  ENVOY_LOG(info, "onData");
+
+  if (requestingAuth && !client_login_.isSSLRequest()) {
+    if (client_login_.isSSLRequest()) {
+      ENVOY_LOG(info, "this is an SSL request");
+    }
+    ENVOY_LOG(info, "requestingAuth");
+    std::string user("kumbi");
+    std::string password("password");
+    std::string salt = server_greeting_.getSalt();
+
     client_login_.setUsername(user);
+
+    std::string authResp = NativePassword(to_c_string(password), to_c_string(salt));
+    client_login_.setAuthResp(authResp);
+
+    std::string authPluginName("mysql_native_password");
+    client_login_.setAuthPluginName(authPluginName);
+
+    std::string client_login_data = client_login_.encode();
+    std::string mysql_msg = MySQLProxy::BufferHelper::encodeHdr(client_login_data, 1);
+    ENVOY_LOG(info, "AOK");
     data.drain(data.length());
-    std::string mysql_msg = MySQLProxy::BufferHelper::encodeHdr(client_login_.encode(), 1);
     data.add(mysql_msg);
   }
 
@@ -39,7 +62,21 @@ Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
 }
 
 Network::FilterStatus MySQLFilter::onWrite(Buffer::Instance& data, bool) {
+  ENVOY_LOG(info, "onWrite");
+
   doDecode(data);
+
+  auto initialising = getSession().getState() == MySQLSession::State::MYSQL_CHALLENGE_REQ;
+
+  ENVOY_LOG(info, "onData");
+  if (initialising) {
+    ENVOY_LOG(info, "I guess we are initialising");
+    std::string server_greeting_data = server_greeting_.encode();
+    std::string server_greeting_msg = MySQLProxy::BufferHelper::encodeHdr(server_greeting_data, 0);
+
+    data.drain(data.length());
+    data.add(server_greeting_msg);
+  }
 
   return Network::FilterStatus::Continue;
 }
@@ -83,6 +120,10 @@ void MySQLFilter::onNewMessage(MySQLSession::State state) {
   if (state == MySQLSession::State::MYSQL_CHALLENGE_REQ) {
     config_->stats_.login_attempts_.inc();
   }
+}
+
+void MySQLFilter::onServerGreeting(ServerGreeting& server_greeting) {
+    server_greeting_ = server_greeting;
 }
 
 void MySQLFilter::onClientLogin(ClientLogin& client_login) {
