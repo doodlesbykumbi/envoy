@@ -22,6 +22,7 @@ envoy_cc_library(
         "mysql_decoder.cc",
         "mysql_filter.cc",
         "mysql_utils.cc",
+        "mysql_go.a",
     ],
     hdrs = [
         "mysql_codec.h",
@@ -34,6 +35,7 @@ envoy_cc_library(
         "mysql_filter.h",
         "mysql_session.h",
         "mysql_utils.h",
+        "mysql_go.h",
     ],
     external_deps = ["sqlparser"],
     deps = [
