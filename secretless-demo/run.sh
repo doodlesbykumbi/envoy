@@ -3,9 +3,6 @@ pushd ..
     bazel build //source/exe:envoy --verbose_failures
 popd
 
-# symlink shared library in anticipation for dynamic linking
-ln -s $PWD/source/extensions/filters/network/mysql_proxy/secretless.a secretless.a
-
 # start envoy. set file secret provider and provide configure to speak to mysql:3306 on 9903
 # also specify dynamic linking path for secretlesslib
 LD_LIBRARY_PATH=$PWD/../source/extensions/filters/network/mysql_proxy
