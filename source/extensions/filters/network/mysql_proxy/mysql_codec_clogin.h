@@ -22,6 +22,7 @@ public:
   const std::string& getUsername() const { return username_; }
   const std::string& getAuthResp() const { return auth_resp_; }
   const std::string& getDb() const { return db_; }
+  const std::string& getAuthPluginName() const { return authPluginName_; }
   bool isResponse41() const;
   bool isResponse320() const;
   bool isSSLRequest() const;
@@ -35,6 +36,8 @@ public:
   void setUsername(std::string& username);
   void setAuthResp(std::string& auth_resp);
   void setDb(std::string& db);
+  void setAuthPluginName(std::string& authPluginName);
+  Buffer::Instance* packet_tail;
 
 private:
   int client_cap_;
@@ -44,6 +47,7 @@ private:
   std::string username_;
   std::string auth_resp_;
   std::string db_;
+  std::string authPluginName_;
 };
 
 } // namespace MySQLProxy

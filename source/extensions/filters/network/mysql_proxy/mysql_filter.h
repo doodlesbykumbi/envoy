@@ -88,7 +88,7 @@ public:
   // MySQLProxy::DecoderCallback
   void onProtocolError() override;
   void onNewMessage(MySQLSession::State state) override;
-  void onServerGreeting(ServerGreeting&) override {};
+  void onServerGreeting(ServerGreeting&) override;
   void onClientLogin(ClientLogin& message) override;
   void onClientLoginResponse(ClientLoginResponse& message) override;
   void onClientSwitchResponse(ClientSwitchResponse&) override {};
@@ -105,6 +105,8 @@ private:
   MySQLFilterConfigSharedPtr config_;
   std::unique_ptr<Decoder> decoder_;
   bool sniffing_{true};
+  ClientLogin client_login_{};
+  ServerGreeting server_greeting_{};
 };
 
 }  // namespace MySQLProxy

@@ -44,11 +44,13 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint64_t& offset, int
   }
   setThreadId(thread_id);
   std::string salt;
-  if (BufferHelper::peekString(buffer, offset, salt) != MYSQL_SUCCESS) {
+  if (BufferHelper::peekStringBySize(buffer, offset, 8, salt) != MYSQL_SUCCESS) {
     ENVOY_LOG(info, "error parsing salt in mysql Greeting msg");
     return MYSQL_FAILURE;
   }
-  setSalt(salt);
+  offset += 1;
+
+//  setSalt(salt);
   if (protocol_ == MYSQL_PROTOCOL_9) {
     // End of HandshakeV9 greeting
     return MYSQL_SUCCESS;
@@ -81,6 +83,37 @@ int ServerGreeting::parseMessage(Buffer::Instance& buffer, uint64_t& offset, int
     return MYSQL_FAILURE;
   }
   setExtServerCap(ext_server_cap);
+
+  uint8_t authPluginDataLength = 0;
+  if (BufferHelper::peekUint8(buffer, offset, authPluginDataLength) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error parsing authPluginDataLength in mysql Greeting msg");
+    return MYSQL_FAILURE;
+  }
+
+  offset += 10;
+
+  uint8_t numBytes = authPluginDataLength - 8;
+  if (numBytes < 0 || numBytes > 13) {
+    numBytes = 13;
+  }
+
+  std::string salt2;
+  if (BufferHelper::peekStringBySize(buffer, offset, numBytes - 1, salt2) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error parsing salt2 in mysql Greeting msg");
+    return MYSQL_FAILURE;
+  }
+  offset += 1;
+
+  salt = salt + salt2;
+  setSalt(salt);
+
+  std::string authn_plugin_name;
+  if (BufferHelper::peekString(buffer, offset, authn_plugin_name) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error parsing authn_plugin_name in mysql Greeting msg");
+    return MYSQL_FAILURE;
+  }
+  authn_plugin_name_ = authn_plugin_name;
+
   return MYSQL_SUCCESS;
 }
 
@@ -91,12 +124,20 @@ std::string ServerGreeting::encode() {
   BufferHelper::addString(*buffer, version_);
   BufferHelper::addUint8(*buffer, enc_end_string);
   BufferHelper::addUint32(*buffer, thread_id_);
-  BufferHelper::addString(*buffer, salt_);
+  BufferHelper::addString(*buffer, salt_.substr(0, 8));
   BufferHelper::addUint8(*buffer, enc_end_string);
   BufferHelper::addUint16(*buffer, server_cap_);
   BufferHelper::addUint8(*buffer, server_language_);
   BufferHelper::addUint16(*buffer, server_status_);
   BufferHelper::addUint16(*buffer, ext_server_cap_);
+  BufferHelper::addUint8(*buffer, salt_.length() + 1);
+  for (int i = 0; i < 10; ++i) {
+    BufferHelper::addUint8(*buffer, enc_end_string);
+  }
+  BufferHelper::addString(*buffer, salt_.substr(8));
+  BufferHelper::addUint8(*buffer, enc_end_string);
+  BufferHelper::addString(*buffer, authn_plugin_name_);
+  BufferHelper::addUint8(*buffer, enc_end_string);
 
   return buffer->toString();
 }

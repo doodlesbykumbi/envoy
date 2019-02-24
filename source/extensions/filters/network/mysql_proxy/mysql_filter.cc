@@ -1,4 +1,6 @@
 #include "extensions/filters/network/mysql_proxy/mysql_filter.h"
+#include "extensions/filters/network/mysql_proxy/mysql_utils.h"
+#include "extensions/filters/network/mysql_proxy/secretless.h"
 
 #include "common/buffer/buffer_impl.h"
 #include "common/common/assert.h"
@@ -13,6 +15,10 @@ namespace Extensions {
 namespace NetworkFilters {
 namespace MySQLProxy {
 
+char* to_c_string(std::string str) {
+  return &str[0u];;
+}
+
 MySQLFilterConfig::MySQLFilterConfig(const std::string& stat_prefix, Stats::Scope& scope)
     : scope_(scope), stat_prefix_(stat_prefix), stats_(generateStats(stat_prefix, scope)) {}
 
@@ -23,12 +29,58 @@ void MySQLFilter::initializeReadFilterCallbacks(Network::ReadFilterCallbacks& ca
 }
 
 Network::FilterStatus MySQLFilter::onData(Buffer::Instance& data, bool) {
+  auto requestingAuth = getSession().getState() == MySQLSession::State::MYSQL_CHALLENGE_REQ;
   doDecode(data);
+
+  ENVOY_LOG(info, "onData");
+
+  if (requestingAuth && !client_login_.isSSLRequest()) {
+    ENVOY_LOG(info, "requestingAuth");
+    auto provider = std::getenv("SECRET_PROVIDER");
+    StoredSecret userRef = { .ID=to_c_string("db-username"), .Provider=to_c_string(provider), .Name=to_c_string("db-password") };
+    StoredSecret passwordRef = { .ID=to_c_string("db-password"), .Provider=to_c_string(provider), .Name=to_c_string("db-password") };
+
+    std::string salt = server_greeting_.getSalt();
+
+
+    std::string authResp = NativePassword(passwordRef, to_c_string(salt));
+    std::string user = GetSecret(userRef);
+
+    client_login_.setUsername(user);
+    client_login_.setAuthResp(authResp);
+
+    std::string authPluginName("mysql_native_password");
+    client_login_.setAuthPluginName(authPluginName);
+
+    std::string client_login_data = client_login_.encode();
+    std::string mysql_msg = MySQLProxy::BufferHelper::encodeHdr(client_login_data, 1);
+
+    data.drain(data.length());
+    data.add(mysql_msg);
+
+      ENVOY_LOG(info, "Authenticated using Secret Provider");
+  }
+
   return Network::FilterStatus::Continue;
 }
 
 Network::FilterStatus MySQLFilter::onWrite(Buffer::Instance& data, bool) {
+  ENVOY_LOG(info, "onWrite");
+
   doDecode(data);
+
+  auto initialising = getSession().getState() == MySQLSession::State::MYSQL_CHALLENGE_REQ;
+
+  ENVOY_LOG(info, "onData");
+  if (initialising) {
+    ENVOY_LOG(info, "I guess we are initialising");
+    std::string server_greeting_data = server_greeting_.encode();
+    std::string server_greeting_msg = MySQLProxy::BufferHelper::encodeHdr(server_greeting_data, 0);
+
+    data.drain(data.length());
+    data.add(server_greeting_msg);
+  }
+
   return Network::FilterStatus::Continue;
 }
 
@@ -36,7 +88,8 @@ void MySQLFilter::doDecode(Buffer::Instance& buffer) {
   // Safety measure just to make sure that if we have a decoding error we keep going and lose stats.
   // This can be removed once we are more confident of this code.
   if (!sniffing_) {
-    buffer.drain(buffer.length());
+//    buffer.drain(buffer.length());
+    ENVOY_LOG(info, "not sniffing anymore");
     return;
   }
 
@@ -72,10 +125,16 @@ void MySQLFilter::onNewMessage(MySQLSession::State state) {
   }
 }
 
+void MySQLFilter::onServerGreeting(ServerGreeting& server_greeting) {
+    server_greeting_ = server_greeting;
+}
+
 void MySQLFilter::onClientLogin(ClientLogin& client_login) {
   if (client_login.isSSLRequest()) {
     config_->stats_.upgraded_to_ssl_.inc();
   }
+
+  client_login_ = client_login;
 }
 
 void MySQLFilter::onClientLoginResponse(ClientLoginResponse& client_login_resp) {

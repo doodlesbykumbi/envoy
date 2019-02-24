@@ -40,6 +40,7 @@ private:
   int server_language_;
   int server_status_;
   int ext_server_cap_;
+  std::string authn_plugin_name_;
 };
 
 } // namespace MySQLProxy

@@ -26,6 +26,8 @@ void ClientLogin::setUsername(std::string& username) {
 
 void ClientLogin::setDb(std::string& db) { db_ = db; }
 
+void ClientLogin::setAuthPluginName(std::string& authPluginName) { authPluginName_ = authPluginName; }
+
 void ClientLogin::setAuthResp(std::string& auth_resp) { auth_resp_.assign(auth_resp); }
 
 bool ClientLogin::isResponse41() const { return client_cap_ & MYSQL_CLIENT_CAPAB_41VS320; }
@@ -114,11 +116,27 @@ int ClientLogin::parseMessage(Buffer::Instance& buffer, uint64_t& offset, int) {
   if (isConnectWithDb()) {
     std::string db;
     if (BufferHelper::peekString(buffer, offset, db) != MYSQL_SUCCESS) {
-      ENVOY_LOG(info, "error parsing auth_resp in mysql ClientLogin msg");
+      ENVOY_LOG(info, "error parsing db in mysql ClientLogin msg");
       return MYSQL_FAILURE;
     }
     setDb(db);
   }
+
+  std::string authPluginName;
+  if (BufferHelper::peekString(buffer, offset, authPluginName) != MYSQL_SUCCESS) {
+    ENVOY_LOG(info, "error parsing authPluginName in mysql ClientLogin msg");
+    return MYSQL_FAILURE;
+  }
+  setAuthPluginName(authPluginName);
+
+  auto duplicate_buff = new Buffer::OwnedImpl();
+  auto packet_tail_buff = new Buffer::OwnedImpl();
+
+  duplicate_buff->add(buffer);
+  duplicate_buff->drain(offset);
+  packet_tail_buff->add(*duplicate_buff);
+  packet_tail = packet_tail_buff;
+
   return MYSQL_SUCCESS;
 }
 
@@ -146,6 +164,10 @@ std::string ClientLogin::encode() {
     BufferHelper::addString(*buffer, db_);
     BufferHelper::addUint8(*buffer, enc_end_string);
   }
+  BufferHelper::addString(*buffer, authPluginName_);
+  BufferHelper::addUint8(*buffer, enc_end_string);
+
+  buffer->add(packet_tail->toString());
 
   return buffer->toString();
 }
